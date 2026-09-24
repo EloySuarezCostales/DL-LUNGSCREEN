@@ -1,0 +1,26 @@
+# Entornos virtuales
+.venv/
+venv/
+ENV/
+env/
+
+# Caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de datos pesados (Límite de GitHub es 100MB)
+*.zip
+archive.zip
+GEOMETRIC_LUNG_RX_PAIRS_LIDC_v1_images_masks_metadata.zip
+train.csv
+valid.csv
+
+# Pesos de los modelos entrenados
+checkpoints/
+*.pth
+*.pt
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
