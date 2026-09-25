@@ -11,7 +11,7 @@ from PIL import Image
 import torchvision.transforms as transforms
 
 # Lista completa de las 14 patologías del dataset CheXpert.
-# NOTA: Asegúrate de que la salida final del modelo en models.py coincida con la cantidad de elementos activos aquí.
+# Asegúrate de que la salida final del modelo en models.py coincida con la cantidad de elementos activos aquí.
 CHEXPERT_TASKS = [
     'No Finding',
     'Enlarged Cardiomediastinum',
