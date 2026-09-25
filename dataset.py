@@ -99,20 +99,27 @@ class CheXpertDataset(Dataset):
         """
         Carga la imagen desde la RAM leyendo el archivo ZIP, fuerza 1 canal y retorna el tensor.
         """
-        # Inicialización "Lazy" del archivo zip. Es obligatorio hacerlo dentro de __getitem__
-        # si queremos que PyTorch pueda usar num_workers > 0 sin crashear.
-        if self.zip_file is None:
-            self.zip_file = zipfile.ZipFile(self.zip_path, 'r')
-            
-        img_internal_path = self.image_paths[idx]
-        
-        try:
-            # Leemos los bytes directamente desde el ZIP (sin tocar el disco duro)
-            img_bytes = self.zip_file.read(img_internal_path)
-            # Convertimos esos bytes en una imagen y la forzamos a 1 canal (escala de grises)
-            image = Image.open(io.BytesIO(img_bytes)).convert('L')
-        except Exception as e:
-            raise IOError(f"Error al abrir la imagen {img_internal_path} desde el ZIP: {e}")
+        # Comprobamos si la ruta es un archivo ZIP o una carpeta extraída
+        if self.zip_path.endswith('.zip'):
+            # Lógica original para archivo .zip (Ordenadores Universidad)
+            if self.zip_file is None:
+                self.zip_file = zipfile.ZipFile(self.zip_path, 'r')
+                
+            img_internal_path = self.image_paths[idx]
+            try:
+                img_bytes = self.zip_file.read(img_internal_path)
+                image = Image.open(io.BytesIO(img_bytes)).convert('L')
+            except Exception as e:
+                raise IOError(f"Error al abrir la imagen {img_internal_path} desde el ZIP: {e}")
+        else:
+            # Lógica para carpeta extraída (Kaggle / Colab)
+            img_internal_path = self.image_paths[idx]
+            # En este caso, self.zip_path es en realidad la ruta al directorio base
+            full_path = os.path.join(self.zip_path, img_internal_path)
+            try:
+                image = Image.open(full_path).convert('L')
+            except Exception as e:
+                raise IOError(f"Error al abrir la imagen en {full_path}: {e}")
             
         if self.transform:
             image = self.transform(image)
