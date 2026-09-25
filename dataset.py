@@ -11,7 +11,6 @@ from PIL import Image
 import torchvision.transforms as transforms
 
 # Lista completa de las 14 patologías del dataset CheXpert.
-# Descomenta las que quieras predecir (las 5 clásicas están activas por defecto).
 # NOTA: Asegúrate de que la salida final del modelo en models.py coincida con la cantidad de elementos activos aquí.
 CHEXPERT_TASKS = [
     'No Finding',
@@ -33,16 +32,6 @@ CHEXPERT_TASKS = [
 class CheXpertDataset(Dataset):
     """
     Dataset de PyTorch para cargar imágenes directamente desde el ZIP de CheXpert.
-    Implementa el filtrado estricto por vista (Fase 1) y el manejo de incertidumbre.
-
-    Args:
-        csv_path (str): Ruta absoluta o relativa al archivo CSV (train.csv o valid.csv).
-        zip_path (str): Ruta absoluta al archivo 'archive.zip'.
-        view_type (Literal['Frontal', 'Lateral']): Filtro para aislar estrictamente las vistas.
-        uncertainty_policy (Literal['U-Ones', 'U-Zeroes', 'U-Ignore']): Estrategia para 
-            manejar etiquetas inciertas (-1.0).
-        transform (Optional[transforms.Compose]): Transformaciones de Torchvision.
-        target_columns (List[str]): Lista de patologías a predecir. Por defecto lee CHEXPERT_TASKS.
     """
     
     def __init__(
@@ -50,7 +39,7 @@ class CheXpertDataset(Dataset):
         csv_path: str,
         zip_path: str,
         view_type: Literal['Frontal', 'Lateral'],
-        uncertainty_policy: Literal['U-Ones', 'U-Zeroes', 'U-Ignore'] = 'U-Ones',
+        uncertainty_policy: Literal['U-Ones', 'U-Zeroes', 'U-Ignore'] = 'U-Ignore',
         transform: Optional[transforms.Compose] = None,
         target_columns: List[str] = CHEXPERT_TASKS
     ) -> None:
