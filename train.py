@@ -117,8 +117,14 @@ def validate_one_epoch(model, dataloader, criterion, device):
 def main():
     args = parse_args()
     
-    # Detección automática de Tarjeta Gráfica (GPU)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # Detección automática de hardware (Multiplataforma: Windows / Mac)
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps') # Aceleración Apple Silicon (M1/M2/M3)
+    else:
+        device = torch.device('cpu')
+        
     print(f"\n[*] Dispositivo de cálculo: {device}")
     print(f"[*] Inicializando entorno para el modelo: {args.view.upper()}")
     
@@ -142,13 +148,15 @@ def main():
     
     # 2. Instanciar DataLoaders (Optimizados para velocidad)
     # En Windows num_workers > 0 puede ser inestable con ciertos paquetes,
-    # lo dejamos en 0 por defecto para garantizar estabilidad inmediata.
+    # lo dejamos en 0 por defecto para garantizar estabilidad inmediata en Win/Mac.
+    use_pin_memory = True if device.type in ['cuda', 'mps'] else False
+    
     train_loader = DataLoader(
         train_dataset, 
         batch_size=args.batch_size, 
         shuffle=True,
         num_workers=0,
-        pin_memory=True if torch.cuda.is_available() else False
+        pin_memory=use_pin_memory
     )
     
     valid_loader = DataLoader(
@@ -156,7 +164,7 @@ def main():
         batch_size=args.batch_size, 
         shuffle=False,
         num_workers=0,
-        pin_memory=True if torch.cuda.is_available() else False
+        pin_memory=use_pin_memory
     )
     
     # 3. Calcular Balance de Clases
@@ -199,7 +207,7 @@ def main():
         # Guardar el modelo si bate el récord (Early Stopping básico)
         if macro_auroc > best_macro_auroc:
             best_macro_auroc = macro_auroc
-            save_path = f"checkpoints/densenet_{args.view.lower()}_best.pth"
+            save_path = os.path.join("checkpoints", f"densenet_{args.view.lower()}_best.pth")
             
             # Guardamos un diccionario (state_dict) en lugar del modelo entero
             # Esta es la práctica recomendada en PyTorch

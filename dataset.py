@@ -105,7 +105,9 @@ class CheXpertDataset(Dataset):
             if self.zip_file is None:
                 self.zip_file = zipfile.ZipFile(self.zip_path, 'r')
                 
-            img_internal_path = self.image_paths[idx]
+            # En ZIP, las rutas internas SIEMPRE usan '/' independientemente de si estamos en Windows o Mac.
+            # Aseguramos que los slashes sean correctos por si el DataFrame se alteró en Windows.
+            img_internal_path = self.image_paths[idx].replace('\\', '/')
             try:
                 img_bytes = self.zip_file.read(img_internal_path)
                 image = Image.open(io.BytesIO(img_bytes)).convert('L')
@@ -114,8 +116,10 @@ class CheXpertDataset(Dataset):
         else:
             # Lógica para carpeta extraída (Kaggle / Colab)
             img_internal_path = self.image_paths[idx]
+            # Normalizamos separadores para el sistema operativo actual (Windows = \, Mac = /)
+            img_internal_path_os = os.path.normpath(img_internal_path)
             # En este caso, self.zip_path es en realidad la ruta al directorio base
-            full_path = os.path.join(self.zip_path, img_internal_path)
+            full_path = os.path.join(self.zip_path, img_internal_path_os)
             try:
                 image = Image.open(full_path).convert('L')
             except Exception as e:
