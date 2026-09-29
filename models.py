@@ -31,7 +31,7 @@ class CheXpertDenseNet(nn.Module):
         )
         
         # Transfer Learning: Para no perder lo aprendido en conv0 con ImageNet, calculamos el promedio 
-        # de los pesos de los 3 canales de color originales. Esto es lo que estipula el AGENTS.md.
+        # de los pesos de los 3 canales de color originales.
         with torch.no_grad():
             new_conv0.weight = nn.Parameter(torch.mean(original_conv0.weight, dim=1, keepdim=True))
             
