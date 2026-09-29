@@ -17,14 +17,16 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Fase 1: Entrenamiento Univariante CheXpert")
     parser.add_argument('--view', type=str, required=True, choices=['Frontal', 'Lateral'],
                         help="Vista a entrenar: 'Frontal' o 'Lateral'")
-    parser.add_argument('--zip_path', type=str, default='archive.zip', help="Ruta al ZIP del dataset")
-    parser.add_argument('--train_csv', type=str, default='train.csv', help="Ruta a los metadatos de entrenamiento")
-    parser.add_argument('--valid_csv', type=str, default='valid.csv', help="Ruta a los metadatos de validación")
+    parser.add_argument('--zip_path', type=str, default='archive.zip', help="Ruta al ZIP del dataset o carpeta extraída en Kaggle")
+    parser.add_argument('--train_csv', type=str, default='train_split_85.csv', help="Ruta a los metadatos de entrenamiento")
+    parser.add_argument('--valid_csv', type=str, default='valid_split_15.csv', help="Ruta a los metadatos de validación")
     parser.add_argument('--batch_size', type=int, default=16, help="Tamaño del lote (reducir si falta VRAM)")
-    parser.add_argument('--epochs', type=int, default=5, help="Número de épocas de entrenamiento")
+    parser.add_argument('--num_workers', type=int, default=0, help="Workers para DataLoader (subir a 2 o 4 en Kaggle)")
+    parser.add_argument('--epochs', type=int, default=5, help="Número total de épocas (si usas --resume, ajusta para incluir las nuevas)")
     parser.add_argument('--lr', type=float, default=1e-4, help="Tasa de aprendizaje (Learning Rate)")
     parser.add_argument('--uncertainty', type=str, default='U-Ignore', choices=['U-Ones', 'U-Zeroes', 'U-Ignore'],
                         help="Política para las etiquetas inciertas -1.0")
+    parser.add_argument('--resume', type=str, default=None, help="Ruta al archivo .pth para retomar el entrenamiento (ej. checkpoints/densenet_frontal_best.pth)")
     return parser.parse_args()
 
 def train_one_epoch(model, dataloader, criterion, optimizer, device):
@@ -155,7 +157,7 @@ def main():
         train_dataset, 
         batch_size=args.batch_size, 
         shuffle=True,
-        num_workers=0,
+        num_workers=args.num_workers,
         pin_memory=use_pin_memory
     )
     
@@ -163,7 +165,7 @@ def main():
         valid_dataset, 
         batch_size=args.batch_size, 
         shuffle=False,
-        num_workers=0,
+        num_workers=args.num_workers,
         pin_memory=use_pin_memory
     )
     
@@ -187,10 +189,24 @@ def main():
     
     os.makedirs("checkpoints", exist_ok=True)
     best_macro_auroc = 0.0
+    start_epoch = 1
+
+    # 4.5 Cargar Checkpoint si se solicita
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print(f"[*] Cargando checkpoint desde '{args.resume}'...")
+            checkpoint = torch.load(args.resume, map_location=device, weights_only=False)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            start_epoch = checkpoint['epoch'] + 1
+            best_macro_auroc = checkpoint.get('macro_auroc', 0.0)
+            print(f"[*] Checkpoint cargado. Retomando desde la época {start_epoch} (Mejor AUROC previo: {best_macro_auroc:.4f})")
+        else:
+            print(f"[!] Archivo no encontrado: '{args.resume}'. Iniciando desde cero.")
     
     # 5. Bucle Principal (Épocas)
     print("\n[+] === INICIANDO ENTRENAMIENTO ===")
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(start_epoch, args.epochs + 1):
         print(f"\nÉpoca {epoch}/{args.epochs}")
         
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
@@ -221,6 +237,17 @@ def main():
             }, save_path)
             
             print(f" [!] *Nuevo modelo estrella guardado* ({save_path})")
+            
+        # Siempre guardamos el último estado para poder retomar
+        latest_path = os.path.join("checkpoints", f"densenet_{args.view.lower()}_latest.pth")
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'macro_auroc': macro_auroc,
+            'view_type': args.view,
+            'classes': CHEXPERT_TASKS
+        }, latest_path)
 
     print("\n[+] ENTRENAMIENTO FINALIZADO CON ÉXITO.")
 
