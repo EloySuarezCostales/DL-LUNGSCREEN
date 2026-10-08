@@ -17,7 +17,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Fase 1: Entrenamiento Univariante CheXpert")
     parser.add_argument('--view', type=str, required=True, choices=['Frontal', 'Lateral'],
                         help="Vista a entrenar: 'Frontal' o 'Lateral'")
-    parser.add_argument('--zip_path', type=str, default='archive.zip', help="Ruta al ZIP del dataset o carpeta extraída en Kaggle")
+    parser.add_argument('--zip_path', type=str, default='/kaggle/input/datasets/ashery/chexpert', help="Ruta al ZIP del dataset o carpeta extraída en Kaggle")
     parser.add_argument('--train_csv', type=str, default='train_split_85.csv', help="Ruta a los metadatos de entrenamiento")
     parser.add_argument('--valid_csv', type=str, default='valid_split_15.csv', help="Ruta a los metadatos de validación")
     parser.add_argument('--batch_size', type=int, default=16, help="Tamaño del lote (reducir si falta VRAM)")
@@ -187,7 +187,7 @@ def main():
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weights, reduction='none')
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     
-    os.makedirs("checkpoints", exist_ok=True)
+
     best_macro_auroc = 0.0
     start_epoch = 1
 
@@ -223,7 +223,7 @@ def main():
         # Guardar el modelo si bate el récord (Early Stopping básico)
         if macro_auroc > best_macro_auroc:
             best_macro_auroc = macro_auroc
-            save_path = os.path.join("checkpoints", f"densenet_{args.view.lower()}_best.pth")
+            save_path = f"densenet_{args.view.lower()}_best.pth"
             
             # Guardamos un diccionario (state_dict) en lugar del modelo entero
             # Esta es la práctica recomendada en PyTorch
@@ -239,7 +239,7 @@ def main():
             print(f" [!] *Nuevo modelo estrella guardado* ({save_path})")
             
         # Siempre guardamos el último estado para poder retomar
-        latest_path = os.path.join("checkpoints", f"densenet_{args.view.lower()}_latest.pth")
+        latest_path = f"densenet_{args.view.lower()}_latest.pth"
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),

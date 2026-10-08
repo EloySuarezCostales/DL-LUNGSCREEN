@@ -31,12 +31,13 @@ El agente debe guiar el código hacia la construcción de un modelo "Dual-Stream
    * Para enseñar a la red que el paciente se mueve entre tomas, las transformaciones geométricas **NO deben aplicarse con la misma semilla** a ambas imágenes.
    * Se deben aplicar rotaciones (±5° a ±7°), traslaciones sutiles y variaciones de escala de forma completamente **independiente** al tensor frontal y al tensor lateral en cada iteración de entrenamiento.
 
-3. **Arquitectura de Fusión Tardía (*Late Fusion*):**
+3. **Arquitectura SOTA de Fusión Bimodal:**
    * **Extractores:** Instanciar dos ramas DenseNet-121. Cargar `densenet_frontal_best.pth` en la Rama 1 y `densenet_lateral_best.pth` en la Rama 2.
-   * **Congelación Inicial:** Durante las primeras épocas, congelar las capas convolucionales (fijar `requires_grad = False`) para entrenar solo la cabeza de fusión y evitar la destrucción catastrófica de los pesos.
-   * **Fusión de Vectores:** Extraer los vectores latentes finales de 1024 dimensiones de cada rama y concatenarlos:
-     $$\mathbf{z}_{\text{fusion}} = [\mathbf{z}_{\text{frontal}} \,\Vert{}\, \mathbf{z}_{\text{lateral}}] \quad \rightarrow \quad \text{Vector de 2048 dimensiones}$$
-   * **Clasificador Final:** Implementar un Perceptrón Multicapa (MLP) o un mecanismo de Atención Cruzada (*Cross-Attention*) que reciba el vector de 2048 dimensiones y devuelva los 14 *logits* finales.
+   * **Atención Cruzada (Cross-Attention):** En lugar de una simple concatenación plana y un MLP, el modelo debe utilizar un mecanismo de *Multi-Head Cross-Attention* en el "Cerebro". Esto permite que el vector Frontal consulte proactivamente características específicas del vector Lateral (y viceversa) para alinear la información anatómica desfasada de forma inteligente antes de emitir los 14 logits.
+   * **Entrenamiento en 2 Fases (Descongelación Gradual):**
+     * *Fase Warm-up:* Durante las primeras épocas (ej. 3-4), congelar los backbones (`requires_grad = False`) y entrenar solo el mecanismo de Atención con un *Learning Rate* normal (ej. `1e-4`) para asentar la lógica de cruce de datos.
+     * *Fase Fine-Tuning End-to-End:* Descongelar los backbones al completo y seguir entrenando toda la macro-red con un *Learning Rate* muy bajo (ej. `1e-5`) para que los extractores aprendan características sinérgicas.
+   * **Optimizadores (LR Schedulers):** Es obligatorio integrar atenuadores de aprendizaje como `ReduceLROnPlateau` o `CosineAnnealingLR` para exprimir las métricas AUROC en la fase de convergencia final.
 
 ### Fase 3: Especialización en Nódulos (Fase FUTURA - ESTRICTAMENTE BLOQUEADA)
 * Enriquecimiento y evaluación final orientada a la detección/segmentación fina de nódulos y generalización anatómica con el dataset sintético[cite: 2].
@@ -67,7 +68,10 @@ El agente debe guiar el código hacia la construcción de un modelo "Dual-Stream
    * Fórmula de balanceo implementada en código:
      $$\text{pos\_weight}_c = \frac{N_{\text{negativos}, c}}{N_{\text{positivos}, c}}$$
 3. **Tratamiento de Incertidumbre (Etiquetas `-1.0`):**
-   * El código debe mantener una política parametrizada y editable (ej. `uncertainty_policy='U-Ones'`) para gestionar dinámicamente si los `-1.0` se tratan como 1, 0, o se ignoran en el cálculo de la pérdida[cite: 2].
+   * El código debe mantener una política parametrizada y editable (ej. `uncertainty_policy='U-Ignore'`) para gestionar dinámicamente si los `-1.0` se tratan como 1, 0, o se ignoran.
+   * **Implementación Matemática Estricta de `U-Ignore`**: Cuando esta política está activa, un diagnóstico incierto (`-1.0` o nulo) **nunca debe descartar el estudio completo** (ya que otras patologías en esa misma radiografía pueden ser útiles). Para ello:
+     1. **Entrenamiento (Loss Masking):** Se debe aplicar una máscara dinámica (`valid_mask = (labels != -1.0).float()`) que multiplique el error de esa predicción por `0`. Esto exige instanciar la pérdida de PyTorch con `reduction='none'` para que el sistema ni castigue ni premie los aciertos/fallos sobre etiquetas inciertas.
+     2. **Validación (Métricas):** El cálculo final del rendimiento debe usar un filtro previo (ej. dentro de `compute_auroc`) que extraiga y descarte los pares `(predicción, etiqueta_real)` marcados como `-1.0` antes de inyectarlos en el motor estadístico del AUROC. Esto asegura una evaluación puramente justa.
 
 ---
 
@@ -75,15 +79,19 @@ El agente debe guiar el código hacia la construcción de un modelo "Dual-Stream
 
 El agente actuará como un Ingeniero de Machine Learning Senior. Debe adherirse a las siguientes directrices operativas sin excepción:
 
-* **Arquitectura de Software Modular (Archivos a generar/modificar):**
-  * `dataset_paired.py`: Debe contener la clase `PairedCheXpertDataset` optimizada para buscar los pares Frontal/Lateral en el CSV y extraerlos del ZIP en tiempo de ejecución.
-  * `models_fusion.py`: Debe contener la clase `DualStreamDenseNet` (incluyendo la lógica de carga de pesos preentrenados y la cabeza de fusión).
-  * `transforms_dual.py`: Pipelines separados de *Data Augmentation* `transform_frontal` y `transform_lateral` para garantizar asincronía espacial[cite: 2].
-  * `train_dual.py`: Script principal de orquestación, entrenamiento multimodal y guardado de métricas.
-* **Gestión de Memoria y GPU (Crítico para Kaggle):**
-  * El entrenamiento bimodal duplica el consumo de VRAM. El agente **debe** configurar hiperparámetros defensivos: reducir el `batch_size` a 16 o usar **Acumulación de Gradientes** (*Gradient Accumulation*) para simular lotes de 32 sin provocar errores *Out Of Memory* (OOM).
-  * Uso estricto de `with torch.no_grad():` en todos los bucles de validación.
-  * Liberación manual de memoria al final de cada época (`torch.cuda.empty_cache()`).
+* **Arquitectura de Software Modular (Archivos del Proyecto - Estado Actual SOTA):**
+  * `dataset_paired.py`: Implementa la clase `PairedCheXpertDataset`. Se encarga de la lectura eficiente de imágenes emparejadas (Frontal/Lateral) directamente desde el archivo `.zip`. Administra el parámetro `uncertainty_policy` para lidiar estructuralmente con los valores inciertos.
+  * `models_fusion.py`: Implementa la arquitectura dual `DualStreamDenseNet`.
+    - Aloja las dos ramas extractoras congelables inicializadas con pesos de la Fase 1.
+    - Implementa `CrossAttentionFusion`, un mecanismo basado en `nn.MultiheadAttention` donde el vector Frontal y el Lateral se consultan bidireccionalmente para suplir las desalineaciones espaciales.
+    - Contiene el método `unfreeze_backbones()` encargado de abrir las compuertas para el Fine-Tuning de todo el sistema.
+  * `transforms_dual.py`: Pipelines de *Data Augmentation* separados (`get_transforms_frontal` y `get_transforms_lateral`) para aplicar transformaciones con distintas magnitudes (ej. ±5° frontal vs ±7° lateral), forzando al modelo a aprender generalización 3D sin depender de un paciente perfectamente quieto.
+  * `train_dual.py`: Script avanzado de orquestación del entrenamiento Bimodal. Responsabilidades clave:
+    - **Enmascaramiento Matemático (U-Ignore)**: Implementa máscaras lógicas multiplicadas por 0 en la `BCEWithLogitsLoss` (`reduction='none'`) para que el modelo no sea castigado ni premiado al evaluar una enfermedad dudosa (`-1.0`), manteniendo intactas las demás enfermedades de la radiografía.
+    - **Evaluación AUROC Dinámica**: En la validación usa `compute_auroc()` para purgar las etiquetas `-1.0` antes del cálculo estadístico.
+    - **Descongelación Gradual (Warm-up a Fine-Tuning)**: Entrena solo el Cross-Attention durante las épocas iniciales (LR `1e-4`). Al alcanzar `warmup_epochs`, descongela toda la red automáticamente y reinicia el optimizador con un LR microscópico (LR `1e-5`) para ajustar finamente sin destruir el conocimiento previo.
+    - **Learning Rate Scheduler**: Utiliza `ReduceLROnPlateau` para mitigar atascos en la convergencia reduciendo la tasa a la mitad de forma dinámica.
+    - **Seguridad Memoria (OOM)**: Usa Acumulación de Gradientes (`GRADIENT_ACCUMULATION_STEPS`) y limpia explícitamente la VRAM en cada época.
 * **Protocolo de Interacción:**
   * El agente **NO DEBE** sobrescribir archivos complejos en un solo bloque gigante sin consultar. 
   * Debe explicar brevemente la lógica matemática o arquitectónica antes de proporcionar los bloques de código Python.
