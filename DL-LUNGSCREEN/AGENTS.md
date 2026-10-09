@@ -96,18 +96,3 @@ El agente actuará como un Ingeniero de Machine Learning Senior. Debe adherirse 
   * El agente **NO DEBE** sobrescribir archivos complejos en un solo bloque gigante sin consultar. 
   * Debe explicar brevemente la lógica matemática o arquitectónica antes de proporcionar los bloques de código Python.
   * Todo el código debe incluir *Type Hints* de Python (`typing`) y docstrings explicativos.
-
----
-
-## 6. Estructura de Carpetas y Plan de Mejora SOTA (Foundation Model Médico)
-
-Para garantizar la estabilidad del código base y a la vez permitir la evolución hacia el modelo definitivo, el repositorio ha sido reorganizado en las siguientes carpetas:
-
-* **`fase1_univariante/`**: Contiene todo el código de la Fase 1 original (modelos independientes). Esta fase se considera **congelada**.
-* **`fase2_bimodal_base/`**: Contiene la implementación funcional y estable de la Fase 2 (Cross-Attention global 1D, pérdida BCEWithLogitsLoss). Se conserva como *baseline* y versión de respaldo.
-* **`fase2_mejorada/`**: Es el **entorno de trabajo activo actual**. Aquí se implementarán las mejoras arquitectónicas sinérgicas para construir el "Foundation Model", duplicando inicialmente los archivos de `fase2_bimodal_base/`.
-
-### Modificaciones planificadas en `fase2_mejorada/`:
-1. **Spatial Cross-Attention (Atención Espacial 2D):** Modificación en `models_fusion.py` para evitar el *Global Average Pooling* prematuro. El modelo extraerá mapas de características de tamaño 7x7 (49 parches) para que la Atención Cruzada asocie cuadrículas específicas del lóbulo frontal con el lateral, mejorando drásticamente el entendimiento volumétrico 3D.
-2. **Focal Loss Multietiqueta con U-Ignore:** Modificación en `train_dual.py`. Sustitución de `BCEWithLogitsLoss` por una pérdida Focal que asigne prioridad computacional dinámica a ejemplos sutiles y difíciles (nódulos pequeños), manteniendo el enmascaramiento matemático de la etiqueta `-1.0`.
-3. **Pre-entrenamiento Contrastivo Bimodal (Futuro):** Alineación geométrica del espacio latente forzando que las vistas Frontal y Lateral del mismo paciente se acerquen, dotando al modelo de inmunidad natural frente a las asincronías clínicas por movimiento o respiración.
